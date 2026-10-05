@@ -1,0 +1,31 @@
+## Interface: 11508, 11509, 11601, 16001
+## Title: Alt Dashboard (Forever)
+## Notes: One view of all your alts: level, professions, cooldowns, gold, reputations and lockouts
+## Author: Daeler
+## Version: 1.0.4
+## IconTexture: Interface\AddOns\AltDashboard_Forever\media\icon
+## X-Category: Inventory
+## Category: Daeler Addons
+## SavedVariables: AltDashboardForeverDB
+## Title-frFR: Alt Dashboard (Forever)
+## Notes-frFR: Une vue unique de tous vos alts : niveau, métiers, cooldowns, or, réputations et lockouts
+
+# Localization
+Locales\Locales.lua
+Locales\frFR.lua
+
+# Core
+Core\Core.lua
+Core\Scan.lua
+Core\Inventory.lua
+Core\Commands.lua
+
+# UI
+modules\UI.lua
+modules\Dashboard.lua
+modules\Reputations.lua
+modules\Weekly.lua
+modules\Search.lua
+modules\Gold.lua
+modules\Mini.lua
+modules\Minimap.lua
