@@ -57,5 +57,6 @@ function page.build(parent)
 end
 
 function page.refresh(p) p.grid:Refresh() end
+function page.animate(p) p.grid:Cascade() end
 
 table.insert(ns.PAGES, page)

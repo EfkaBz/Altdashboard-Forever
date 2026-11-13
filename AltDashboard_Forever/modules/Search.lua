@@ -21,21 +21,20 @@ end
 local function createRow(p, i)
   local row = UI.RowBase(p.content, UI.CONTENT_W, ROW_H)
   row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
-  row.icon = row:CreateTexture(nil, "ARTWORK")
-  row.icon:SetSize(26, 26)
-  row.icon:SetPoint("LEFT", 6, 0)
-  row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  row.iconFrame = ns.Skin.Icon(row, 26)
+  row.iconFrame:SetPoint("LEFT", 8, 0)
+  row.icon = row.iconFrame.tex
   row.name = UI.Text(row, "GameFontNormal", "TOPLEFT", 40, -3, 330)
   row.sub = UI.Text(row, "GameFontHighlightSmall", "BOTTOMLEFT", 40, 3, 330)
-  row.sub:SetTextColor(0.6, 0.6, 0.6)
+  UI.Ink(row.sub)
   row.owners = UI.Text(row, "GameFontHighlightSmall", "LEFT", 380, 0, UI.CONTENT_W - 390)
-  row:SetScript("OnEnter", function(self)
+  row:HookScript("OnEnter", function(self)
     if not self.itemID then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetHyperlink("item:" .. self.itemID)
     GameTooltip:Show()
   end)
-  row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  row:HookScript("OnLeave", function() GameTooltip:Hide() end)
   row:SetScript("OnClick", function(self)
     if self.itemID and IsModifiedClick("CHATLINK") then
       local _, link = ns.GetItemInfo(self.itemID)
@@ -52,12 +51,9 @@ function page.build(parent)
   local label = UI.Text(p, "GameFontNormal", "TOPLEFT", 4, -4)
   label:SetText(L["Find an item or a recipe:"])
   UI.Ink(label)
-  p.box = CreateFrame("EditBox", nil, p, "InputBoxTemplate")
-  p.box:SetSize(320, 20)
+  p.box = UI.EditBox(p, 320, L["Search items, recipes"])
   p.box:SetPoint("LEFT", label, "RIGHT", 14, 0)
-  p.box:SetAutoFocus(false)
-  p.box:SetScript("OnEscapePressed", p.box.ClearFocus)
-  p.box:SetScript("OnTextChanged", function() page.refresh(p) end)
+  p.box:HookScript("OnTextChanged", function() page.refresh(p) end)
   p.count = UI.Text(p, "GameFontHighlightSmall", "TOPRIGHT", -6, -6)
   p.count:SetJustifyH("RIGHT")
   UI.Ink(p.count)
@@ -74,7 +70,8 @@ function page.build(parent)
   p.content = content
   p.rows = {}
 
-  p.hint = box:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+  p.hint = ns.Skin.Text(box, 13, "muted")
+  p.hint:SetJustifyH("CENTER")
   p.hint:SetPoint("CENTER")
   p.hint:SetWidth(UI.CONTENT_W - 100)
   return p
@@ -120,5 +117,7 @@ function page.refresh(p)
   end
   p.count:SetText(#text >= 2 and L["%d items, %d recipes"]:format(#items, #recipes) or "")
 end
+
+function page.animate(p) UI.Cascade(p.rows, #p.rows) end
 
 table.insert(ns.PAGES, page)

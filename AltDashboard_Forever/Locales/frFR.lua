@@ -135,3 +135,31 @@ L["Right-click: compact window"] = "Clic droit : fenêtre compacte"
 L["Click: open the dashboard"] = "Clic : ouvrir le tableau de bord"
 L["Drag: move"] = "Glisser : déplacer"
 L["Search items, recipes"] = "Objets, recettes..."
+
+-- 1.1.0: summary cards
+L["Characters"] = "Personnages"
+L["Total gold"] = "Or total"
+L["Weekly reset"] = "Réinit. hebdo"
+L["Tasks this week"] = "Tâches de la semaine"
+
+-- 1.1.0: quest items in tooltips
+L["Tooltips"] = "Infobulles"
+L["Quest of the item in tooltips"] = "Quête de l'objet dans les infobulles"
+L["Quest #%d"] = "Quête n°%d"
+L["To turn in"] = "À rendre"
+L["In progress"] = "En cours"
+L["Completed"] = "Terminée"
+L["Not done yet"] = "Pas encore faite"
+L["Quest item"] = "Objet de quête"
+L["no quest in your log uses it"] = "aucune quête de votre journal ne l'utilise"
+L["Starts:"] = "Commence :"
+L["Quest:"] = "Quête :"
+L["and %d more quests"] = "et %d autres quêtes"
+L["Quest completed: you can throw this item away"] = "Quête terminée : vous pouvez jeter cet objet"
+L["quest database still loading..."] = "base de quêtes en cours de chargement..."
+
+-- 1.1.0: mail sent to alts
+L["Sent by your characters"] = "Envoyé par vos personnages"
+L["%d items"] = "%d objets"
+L["%s ago"] = "il y a %s"
+L["Mail recorded for %s."] = "Courrier ajouté pour %s."

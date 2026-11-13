@@ -58,7 +58,7 @@ local function scanBank(c) c.bank = scanContainers(BANK) end
 -- Recipes (trade skill window, and the craft window used by enchanting)
 local function scanTradeSkill(c)
   local prof = GetTradeSkillLine and GetTradeSkillLine()
-  if not prof or prof == "UNKNOWN" then return end
+  if not prof or prof == "UNKNOWN" or not GetNumTradeSkills then return end
   local list = {}
   for i = 1, GetNumTradeSkills() do
     local name, kind = GetTradeSkillInfo(i)
@@ -72,7 +72,7 @@ end
 
 local function scanCraft(c)
   local prof = GetCraftDisplaySkillLine and GetCraftDisplaySkillLine()
-  if not prof then return end
+  if not prof or not GetNumCrafts then return end
   local list = {}
   for i = 1, GetNumCrafts() do
     local name, _, kind = GetCraftInfo(i)
@@ -146,14 +146,19 @@ end
 local function hookTooltips()
   if TooltipDataProcessor and Enum and Enum.TooltipDataType and TooltipDataProcessor.AddTooltipPostCall then
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-      if tooltip == GameTooltip or tooltip == ItemRefTooltip then addOwners(tooltip, data and data.id) end
+      if tooltip == GameTooltip or tooltip == ItemRefTooltip then
+        if ns.AddQuestItemInfo then ns.AddQuestItemInfo(tooltip, data and data.id) end
+        addOwners(tooltip, data and data.id)
+      end
     end)
     return
   end
   for _, tt in ipairs({ GameTooltip, ItemRefTooltip }) do
     tt:HookScript("OnTooltipSetItem", function(self)
       local _, link = self:GetItem()
-      addOwners(self, link and tonumber(link:match("item:(%d+)")))
+      local id = link and tonumber(link:match("item:(%d+)"))
+      if ns.AddQuestItemInfo then ns.AddQuestItemInfo(self, id) end
+      addOwners(self, id)
     end)
   end
 end

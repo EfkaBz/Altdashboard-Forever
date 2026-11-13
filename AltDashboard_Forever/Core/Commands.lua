@@ -23,6 +23,10 @@ SlashCmdList.ALTDASHBOARD = function(msg)
       print(("%s%s|r (%d) - %s - %s"):format(ns.ClassColor(c), c.name, c.level or 0, ns.Money(c.money, true),
         #tasks > 0 and table.concat(tasks, ", ") or L["Nothing to do"]))
     end
+  elseif cmd == "quest" and rest ~= "" then
+    -- item link (shift-click) or item ID
+    local id = tonumber(rest:match("item:(%d+)") or rest)
+    if id then ns.DebugQuestItem(id) end
   elseif cmd == "remove" and rest ~= "" then
     if ns.RemoveChar(ns.FindChar(rest) or "") then print(ns.PREFIX .. L["%s removed."]:format(rest))
     else print(ns.PREFIX .. L["Unknown character: %s"]:format(rest)) end

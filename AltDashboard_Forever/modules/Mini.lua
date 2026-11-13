@@ -1,69 +1,86 @@
 -- Alt Dashboard (Forever): compact window (tasks only), can stay on screen while playing
 local _, ns = ...
 local L = ns.L
-local UI = ns.UI
+local S = ns.Skin
+local C = S.C
 
-local WIDTH, LINE_H, MAX_LINES = 280, 15, 30
+local WIDTH, LINE_H, MAX_LINES, TOP = 290, 16, 30, 40
 local mini
 
+-- gold dot drawn inline before each task
+local BULLET = ("|T%sDot:6:6:0:0:16:16:0:16:0:16:%d:%d:%d|t"):format(S.MEDIA,
+  C.gold[1] * 255, C.gold[2] * 255, C.gold[3] * 255)
+
 local function create()
-  local f = CreateFrame("Frame", "AltDashboardForeverMini", UIParent, "BackdropTemplate")
-  f:SetWidth(WIDTH)
+  local f = S.Window("AltDashboardForeverMini", UIParent, WIDTH, 80, 10)
   f:SetFrameStrata("MEDIUM")
-  f:SetMovable(true)
-  f:EnableMouse(true)
-  f:RegisterForDrag("LeftButton")
-  f:SetClampedToScreen(true)
-  f:SetScript("OnDragStart", f.StartMoving)
-  f:SetScript("OnDragStop", function(self)
-    self:StopMovingOrSizing()
-    local point, _, rel, x, y = self:GetPoint()
-    ns.db.miniPos = { point, rel, x, y }
-  end)
-  f:SetBackdrop({
-    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 16, edgeSize = 14,
-    insets = { left = 3, right = 3, top = 3, bottom = 3 },
-  })
-  f:SetBackdropBorderColor(0.8, 0.65, 0.2, 0.9)
+  f.openDY = -6
   local pos = ns.db.miniPos
   if pos then f:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4]) else f:SetPoint("RIGHT", -80, 80) end
 
-  local logo = f:CreateTexture(nil, "ARTWORK")
-  logo:SetSize(16, 16)
-  logo:SetPoint("TOPLEFT", 8, -7)
-  logo:SetTexture(ns.ADDON_ICON)
-  f.title = UI.Text(f, "GameFontNormal", "TOPLEFT", 30, -8, WIDTH - 60)
-
-  local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-  close:SetSize(22, 22)
-  close:SetPoint("TOPRIGHT", -1, -1)
-  close:SetScript("OnClick", function() ns.SetMiniShown(false) end)
-
-  -- click the title zone: open the full dashboard
-  local open = CreateFrame("Button", nil, f)
-  open:SetPoint("TOPLEFT", 4, -4)
-  open:SetSize(WIDTH - 34, 20)
-  open:RegisterForClicks("LeftButtonUp")
-  open:SetScript("OnClick", function() ns.ToggleDashboard("overview") end)
-  open:SetScript("OnEnter", function(self)
+  -- title bar: click opens the dashboard, drag moves the window
+  local bar = CreateFrame("Button", nil, f)
+  bar:SetPoint("TOPLEFT", 1, -1)
+  bar:SetPoint("TOPRIGHT", -30, -1)
+  bar:SetHeight(30)
+  S.Draggable(f, bar, function(self)
+    local point, _, rel, x, y = self:GetPoint()
+    ns.db.miniPos = { point, rel, x, y }
+  end)
+  bar:RegisterForClicks("LeftButtonUp")
+  bar:SetScript("OnClick", function() ns.ToggleDashboard("overview") end)
+  bar:SetScript("OnEnter", function(self)
+    f.title:SetTextColor(S.Color(C.goldHi))
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:AddLine(L["Click: open the dashboard"], 0.5, 1, 0.5)
     GameTooltip:AddLine(L["Drag: move"], 0.5, 1, 0.5)
     GameTooltip:Show()
   end)
-  open:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  open:RegisterForDrag("LeftButton")
-  open:SetScript("OnDragStart", function() f:StartMoving() end)
-  open:SetScript("OnDragStop", function() f:GetScript("OnDragStop")(f) end)
+  bar:SetScript("OnLeave", function()
+    f.title:SetTextColor(S.Color(C.gold))
+    GameTooltip:Hide()
+  end)
+
+  local logo = S.Icon(bar, 20, ns.ADDON_ICON)
+  logo.tex:SetTexCoord(0, 1, 0, 1)
+  logo:SetBorderColor(S.Color(C.gold, 0.7))
+  logo:SetPoint("LEFT", 10, -1)
+  f.title = S.Text(bar, 13, "gold")
+  f.title:SetPoint("LEFT", logo, "RIGHT", 8, 0)
+  f.title:SetText("Alt Dashboard")
+  f.count = S.Text(bar, 11, "muted")
+  f.count:SetPoint("RIGHT", -2, 0)
+
+  local close = S.CloseButton(f, function() ns.SetMiniShown(false) end)
+  close:SetPoint("TOPRIGHT", -6, -5)
+
+  local rule = S.Rule(f, C.ring, 0.45)
+  rule:SetPoint("TOPLEFT", 10, -31)
+  rule:SetPoint("TOPRIGHT", -10, -31)
 
   f.lines = {}
   for i = 1, MAX_LINES do
-    local fs = UI.Text(f, "GameFontHighlightSmall", "TOPLEFT", 12, -30 - (i - 1) * LINE_H, WIDTH - 24)
+    local fs = S.Text(f, 11, "text")
+    fs:SetPoint("TOPLEFT", 14, -TOP - (i - 1) * LINE_H)
+    fs:SetWidth(WIDTH - 28)
+    fs:SetWordWrap(false)
     f.lines[i] = fs
   end
+  f.height = 80
   return f
+end
+
+-- the window grows / shrinks smoothly with the list
+local function setHeight(h)
+  if not mini.height or not mini:IsVisible() then
+    mini.height = h
+    mini:SetHeight(h)
+    return
+  end
+  if math.abs(h - mini.height) < 1 then return end
+  local from = mini.height
+  mini.height = h
+  S.Tween(mini.lines, { dur = 0.25, from = from, to = h, set = function(v) mini:SetHeight(v) end })
 end
 
 function ns.RefreshMini()
@@ -77,24 +94,32 @@ function ns.RefreshMini()
     local tasks = ns.GetTasks(c)
     if #tasks > 0 then
       total = total + #tasks
-      line(ns.ColoredName(c) .. " |cff808080(" .. (c.level or "?") .. ")|r")
-      for _, t in ipairs(tasks) do line("   |cffffd100-|r " .. t) end
+      line(ns.ColoredName(c) .. " " .. S.Hex(C.dim) .. (c.level or "?") .. "|r")
+      for _, t in ipairs(tasks) do line("   " .. BULLET .. "  " .. t) end
     end
   end
-  if n == 0 then line("|cff00ff00" .. L["Nothing to do"] .. "|r") end
+  if n == 0 then line(S.Hex(C.good) .. L["Nothing to do"] .. "|r") end
   for i = math.min(n, MAX_LINES) + 1, MAX_LINES do mini.lines[i]:SetText("") end
-  mini.title:SetText(L["%d tasks this week"]:format(total))
-  mini:SetHeight(36 + math.min(n, MAX_LINES) * LINE_H)
+  mini.count:SetText(L["%d tasks this week"]:format(total))
+  setHeight(TOP + 10 + math.min(n, MAX_LINES) * LINE_H)
 end
 
 function ns.SetMiniShown(shown)
   ns.db.miniShown = shown or nil
   if shown then
     mini = mini or create()
-    mini:Show()
+    if S.IsTweening(mini) and mini:IsShown() then
+      -- reopened while it was closing: put it back in place first
+      S.StopTween(mini)
+      mini:Hide()
+      mini:SetAlpha(1)
+      local h = mini.home
+      if h then mini:ClearAllPoints(); mini:SetPoint(h[1], h[2], h[3], h[4], h[5]) end
+    end
+    if not mini:IsShown() then mini:Show() end
     ns.RefreshMini()
   elseif mini then
-    mini:Hide()
+    S.Close(mini)
   end
   ns.RefreshDashboard()
 end

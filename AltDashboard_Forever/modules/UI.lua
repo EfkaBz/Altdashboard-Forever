@@ -1,24 +1,25 @@
--- Alt Dashboard (Forever): shared widgets (list box, scroll, buttons, character grid)
+-- Alt Dashboard (Forever): shared widgets (panels, scroll, rows, character grid) on the custom skin
 local _, ns = ...
 local L = ns.L
+local S = ns.Skin
+local C = S.C
 
 local UI = {}
 ns.UI = UI
 ns.PAGES = {} -- tabs, filled by the page modules: { key, label, build(parent) -> page, refresh(page) }
 
-UI.WIDTH, UI.HEIGHT = 990, 660
-UI.CONTENT_W = UI.WIDTH - 60 - 34
+UI.WIDTH, UI.HEIGHT = 1000, 700
+UI.CONTENT_W = UI.WIDTH - 60 - 24 -- page area minus the panel insets and the scroll bar
 
--- dark brown ink for text written on the parchment
+-- old parchment helper: text is light on the dark theme now, kept for the page modules
 function UI.Ink(fs)
-  fs:SetTextColor(0.1, 0.05, 0.01)
-  fs:SetShadowOffset(0, 0)
+  fs:SetTextColor(S.Color(C.muted))
   return fs
 end
 
 function UI.Icon(name) return "Interface\\Icons\\" .. name end
 
-function UI.StandingText(standing, short)
+function UI.StandingText(standing)
   local col = FACTION_BAR_COLORS and FACTION_BAR_COLORS[standing] or { r = 1, g = 1, b = 1 }
   return ("|cff%02x%02x%02x%s|r"):format(col.r * 255, col.g * 255, col.b * 255, _G["FACTION_STANDING_LABEL" .. standing] or "?")
 end
@@ -28,78 +29,64 @@ function UI.GoldLine(parent, anchor, alpha)
   line:SetHeight(1)
   line:SetPoint("BOTTOMLEFT", anchor)
   line:SetPoint("BOTTOMRIGHT", anchor)
-  line:SetColorTexture(1, 0.82, 0, alpha or 0.5)
+  line:SetColorTexture(C.trim[1], C.trim[2], C.trim[3], alpha or 0.8)
   return line
 end
 
-function UI.Button(parent, label, width, onClick)
-  local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-  btn:SetSize(width or 130, 24)
-  btn:SetText(label)
-  btn:SetScript("OnClick", onClick)
-  return btn
+function UI.Button(parent, label, width, onClick, primary)
+  return S.Button(parent, label, width or 130, 24, onClick, primary)
 end
 
-function UI.Check(parent, label, onClick, small)
-  local c = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-  c:SetSize(24, 24)
-  c.text = c:CreateFontString(nil, "OVERLAY", small and "GameFontHighlightSmall" or "GameFontHighlightSmall")
-  c.text:SetPoint("LEFT", c, "RIGHT", 2, 0)
-  c.text:SetText(label)
-  UI.Ink(c.text)
-  c:SetScript("OnClick", onClick)
+function UI.Check(parent, label, onClick)
+  local c = S.Check(parent, label, 16)
+  if onClick then c:SetScript("OnClick", onClick) end
   return c
 end
 
-function UI.EditBox(parent, width)
-  local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-  e:SetSize(width, 20)
-  e:SetAutoFocus(false)
-  e:SetScript("OnEscapePressed", e.ClearFocus)
-  return e
+function UI.EditBox(parent, width, placeholder)
+  return S.EditBox(parent, width, 22, placeholder)
 end
 
+-- the old game font names, mapped to the skin's sizes and colors
+local FONTS = {
+  GameFontNormal = { 13, "gold" }, GameFontNormalSmall = { 11, "gold" }, GameFontNormalLarge = { 15, "gold" },
+  GameFontHighlight = { 13, "text" }, GameFontHighlightSmall = { 11, "text" }, GameFontHighlightLarge = { 16, "text" },
+  GameFontDisable = { 13, "dim" }, GameFontDisableSmall = { 11, "dim" }, GameFontGreenSmall = { 11, "good" },
+  QuestFont_Huge = { 17, "gold" },
+}
 function UI.Text(parent, font, point, x, y, width)
-  local fs = parent:CreateFontString(nil, "OVERLAY", font)
+  local f = FONTS[font] or { 12, "text" }
+  local fs = S.Text(parent, f[1], f[2])
   fs:SetPoint(point, x or 0, y or 0)
-  fs:SetJustifyH("LEFT")
   fs:SetWordWrap(false)
   if width then fs:SetWidth(width) end
   return fs
 end
 
 function UI.ListBox(parent)
-  local box = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-  box:SetBackdrop({
-    bgFile = "Interface\\Buttons\\WHITE8x8",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    edgeSize = 12,
-    insets = { left = 3, right = 3, top = 3, bottom = 3 },
-  })
-  box:SetBackdropColor(0.04, 0.03, 0.02, 0.9)
-  box:SetBackdropBorderColor(0.6, 0.5, 0.2, 0.8)
-  return box
+  return S.Panel(parent, 8)
 end
 
--- scroll frame inside a list box, below an optional header of headH pixels
+-- scroll frame inside a panel, below an optional header of headH pixels
 function UI.Scroll(box, headH, width)
-  local scroll = CreateFrame("ScrollFrame", nil, box, "UIPanelScrollFrameTemplate")
+  local scroll, content = S.Scroll(box)
   scroll:SetPoint("TOPLEFT", 6, -6 - (headH or 0))
-  scroll:SetPoint("BOTTOMRIGHT", -28, 6)
-  local content = CreateFrame("Frame", nil, scroll)
+  scroll:SetPoint("BOTTOMRIGHT", -14, 6)
   content:SetSize(width or UI.CONTENT_W, 1)
-  scroll:SetScrollChild(content)
   return scroll, content
 end
 
+-- column header strip at the top of a panel
 function UI.HeaderBar(box, width, height)
   local bar = CreateFrame("Frame", nil, box)
   bar:SetPoint("TOPLEFT", 6, -5)
   bar:SetSize(width or UI.CONTENT_W, height)
-  local bg = bar:CreateTexture(nil, "BACKGROUND")
+  local bg = bar:CreateTexture(nil, "BACKGROUND", nil, 2)
   bg:SetAllPoints()
-  bg:SetColorTexture(1, 0.82, 0, 0.12)
-  UI.GoldLine(bar, bar)
+  S.Gradient(bg, { C.head[1], C.head[2], C.head[3], 0.9 }, { C.head[1], C.head[2], C.head[3], 0.4 })
+  local rule = S.Rule(bar, C.ring, 0.7)
+  rule:SetPoint("BOTTOMLEFT")
+  rule:SetPoint("BOTTOMRIGHT")
   return bar
 end
 
@@ -109,22 +96,40 @@ function UI.RowBase(parent, width, height)
   row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   row.bg = row:CreateTexture(nil, "BACKGROUND")
   row.bg:SetAllPoints()
-  local hl = row:CreateTexture(nil, "HIGHLIGHT")
-  hl:SetAllPoints()
-  hl:SetColorTexture(1, 1, 1, 0.08)
-  UI.GoldLine(row, row, 0.15)
+  row.mark = row:CreateTexture(nil, "BORDER")
+  row.mark:SetPoint("TOPLEFT"); row.mark:SetPoint("BOTTOMLEFT"); row.mark:SetWidth(2)
+  row.mark:SetColorTexture(S.Color(C.gold))
+  row.mark:Hide()
+  row.hl = S.RowHighlight(row)
+  local line = row:CreateTexture(nil, "BORDER")
+  line:SetHeight(1)
+  line:SetPoint("BOTTOMLEFT"); line:SetPoint("BOTTOMRIGHT")
+  line:SetColorTexture(1, 1, 1, 0.035)
   return row
 end
 
+-- zebra stripes; the logged-in character gets a faint blue band and a gold mark
 function UI.Stripe(row, index, current)
-  if current then row.bg:SetColorTexture(1, 0.82, 0, 0.12)
-  elseif index % 2 == 0 then row.bg:SetColorTexture(1, 1, 1, 0.03)
+  if current then row.bg:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 0.08)
+  elseif index % 2 == 0 then row.bg:SetColorTexture(1, 1, 1, 0.022)
   else row.bg:SetColorTexture(0, 0, 0, 0) end
+  if row.mark then row.mark:SetShown(current == true) end
+end
+
+-- rows slide in one after the other when a page is shown
+function UI.Cascade(rows, count)
+  for i = 1, math.min(count, 18) do
+    local row = rows[i]
+    if row and row:IsShown() then
+      row:SetAlpha(0)
+      S.Tween(row, { dur = 0.22, delay = (i - 1) * 0.025, from = 0, to = 1, set = function(v) row:SetAlpha(v) end })
+    end
+  end
 end
 
 -- Character grid: one line per entry, one column per character ----------------
--- opts: rows() -> { {label, icon?, color?, cell(c) -> text, tip(c)?, click(c, button)?, labelTip()?, labelClick(button)?} }
-local LABEL_W, COL_W, GRID_ROW_H, GRID_HEAD_H = 210, 96, 24, 34
+-- opts: rows() -> { {label, icon?, cell(c) -> text, tip(c)?, click(c, button)?, labelTip()?, labelClick(button)?} }
+local LABEL_W, COL_W, GRID_ROW_H, GRID_HEAD_H = 210, 96, 24, 36
 
 function UI.Grid(parent, opts)
   local g = { opts = opts, offset = 0, rows = {} }
@@ -136,38 +141,34 @@ function UI.Grid(parent, opts)
   g.cols = cols
 
   local head = UI.HeaderBar(box, UI.CONTENT_W, GRID_HEAD_H)
-  g.headLabel = UI.Text(head, "GameFontNormalSmall", "LEFT", 8, 0)
+  g.headLabel = UI.Text(head, "GameFontNormal", "LEFT", 10, 0)
   g.headLabel:SetText(opts.title or "")
   g.heads = {}
   for i = 1, cols do
     local h = CreateFrame("Frame", nil, head)
     h:SetPoint("TOPLEFT", LABEL_W + (i - 1) * COL_W, 0)
     h:SetSize(COL_W, GRID_HEAD_H)
-    h.name = h:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    h.name:SetPoint("TOP", 0, -4)
+    h.name = S.Text(h, 12, "text")
+    h.name:SetPoint("TOP", 0, -5)
     h.name:SetWidth(COL_W - 6)
+    h.name:SetJustifyH("CENTER")
     h.name:SetWordWrap(false)
-    h.level = h:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    h.level = S.Text(h, 10, "muted")
     h.level:SetPoint("BOTTOM", 0, 5)
     g.heads[i] = h
   end
   -- pager when there are more characters than columns
   local function pager(dir, x)
-    local b = CreateFrame("Button", nil, head)
-    b:SetSize(20, 20)
-    b:SetPoint("LEFT", x, 0)
-    local tex = dir < 0 and "Interface\\Buttons\\UI-SpellbookIcon-PrevPage" or "Interface\\Buttons\\UI-SpellbookIcon-NextPage"
-    b:SetNormalTexture(tex .. "-Up")
-    b:SetPushedTexture(tex .. "-Down")
-    b:SetDisabledTexture(tex .. "-Disabled")
-    b:SetScript("OnClick", function()
+    local b = S.ArrowButton(head, dir < 0 and "left" or "right", function()
       g.offset = math.max(0, g.offset + dir * cols)
       g:Refresh()
+      UI.Cascade(g.rows, #g.rows)
     end)
+    b:SetPoint("LEFT", x, 0)
     return b
   end
-  g.prev = pager(-1, LABEL_W - 48)
-  g.next = pager(1, LABEL_W - 26)
+  g.prev = pager(-1, LABEL_W - 52)
+  g.next = pager(1, LABEL_W - 28)
 
   local _, content = UI.Scroll(box, GRID_HEAD_H)
   g.content = content
@@ -179,40 +180,43 @@ function UI.Grid(parent, opts)
     row:SetPoint("TOPLEFT", 0, -(i - 1) * GRID_ROW_H)
     row.icon = row:CreateTexture(nil, "ARTWORK")
     row.icon:SetSize(18, 18)
-    row.icon:SetPoint("LEFT", 6, 0)
-    row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    row.label = UI.Text(row, "GameFontHighlightSmall", "LEFT", 30, 0, LABEL_W - 36)
+    row.icon:SetPoint("LEFT", 8, 0)
+    row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    row.label = UI.Text(row, "GameFontHighlightSmall", "LEFT", 32, 0, LABEL_W - 38)
     row:SetScript("OnClick", function(r, button) if r.entry.labelClick then r.entry.labelClick(button) end end)
-    row:SetScript("OnEnter", function(r)
+    row:HookScript("OnEnter", function(r)
       if not r.entry.labelTip then return end
       GameTooltip:SetOwner(r, "ANCHOR_RIGHT")
       r.entry.labelTip()
       GameTooltip:Show()
     end)
-    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:HookScript("OnLeave", function() GameTooltip:Hide() end)
     row.cells = {}
     for k = 1, cols do
       local cell = CreateFrame("Button", nil, row)
       cell:SetPoint("TOPLEFT", LABEL_W + (k - 1) * COL_W, 0)
       cell:SetSize(COL_W, GRID_ROW_H)
       cell:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-      cell.text = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+      cell.text = S.Text(cell, 11, "text")
       cell.text:SetPoint("CENTER")
       cell.text:SetWidth(COL_W - 6)
+      cell.text:SetJustifyH("CENTER")
       cell.text:SetWordWrap(false)
-      local hl = cell:CreateTexture(nil, "HIGHLIGHT")
-      hl:SetAllPoints()
-      hl:SetColorTexture(1, 1, 1, 0.06)
+      local hl = cell:CreateTexture(nil, "BACKGROUND", nil, 2)
+      hl:SetPoint("TOPLEFT", 2, -2)
+      hl:SetPoint("BOTTOMRIGHT", -2, 2)
+      hl:SetColorTexture(C.accent[1], C.accent[2], C.accent[3], 0.12)
+      S.HoverFade(cell, hl)
       cell:SetScript("OnClick", function(b, button)
         if row.entry.click and b.char then row.entry.click(b.char, button) end
       end)
-      cell:SetScript("OnEnter", function(b)
+      cell:HookScript("OnEnter", function(b)
         if not row.entry.tip or not b.char then return end
         GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
         row.entry.tip(b.char)
         GameTooltip:Show()
       end)
-      cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
+      cell:HookScript("OnLeave", function() GameTooltip:Hide() end)
       row.cells[k] = cell
     end
     self.rows[i] = row
@@ -234,7 +238,7 @@ function UI.Grid(parent, opts)
       h:SetShown(c ~= nil)
       if c then
         h.name:SetText(ns.ColoredName(c))
-        h.level:SetText(LEVEL and (LEVEL .. " " .. (c.level or "?")) or c.level)
+        h.level:SetText((LEVEL or "Level") .. " " .. (c.level or "?"))
       end
     end
     local entries = self.opts.rows()
@@ -258,10 +262,13 @@ function UI.Grid(parent, opts)
     if self.empty then self.empty:SetShown(#entries == 0) end
   end
 
+  function g:Cascade() UI.Cascade(self.rows, #self.rows) end
+
   if opts.emptyText then
-    g.empty = box:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+    g.empty = S.Text(box, 13, "muted")
     g.empty:SetPoint("CENTER", 0, 0)
     g.empty:SetWidth(UI.CONTENT_W - 80)
+    g.empty:SetJustifyH("CENTER")
     g.empty:SetText(opts.emptyText)
   end
   return g

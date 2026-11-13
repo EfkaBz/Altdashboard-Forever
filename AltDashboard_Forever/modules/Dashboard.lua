@@ -1,28 +1,30 @@
--- Alt Dashboard (Forever): the dashboard window (header, summary, tabs) and the Overview tab
+-- Alt Dashboard (Forever): the dashboard window (title bar, tabs, summary cards) and the Overview tab
 local ADDON, ns = ...
 local L = ns.L
 local UI = ns.UI
+local S = ns.Skin
+local C = S.C
 
 local WIDTH, HEIGHT, CONTENT_W = UI.WIDTH, UI.HEIGHT, UI.CONTENT_W
-local ROW_H, HEAD_H = 42, 22
+local ROW_H, HEAD_H = 40, 24
 local icon = UI.Icon
 
 local COLUMNS = {
-  { key = "name",  label = "Character",   x = 0,   w = 165 },
-  { key = "level", label = "Level",       x = 165, w = 70 },
-  { key = "gold",  label = "Gold",        x = 235, w = 100 },
-  { key = "prof",  label = "Professions", x = 335, w = 130 },
-  { key = "cd",    label = "Cooldowns",   x = 465, w = 100 },
-  { key = "mail",  label = "Mail / AH",   x = 565, w = 75 },
-  { key = "gear",  label = "Gear",        x = 640, w = 65 },
-  { key = "lock",  label = "Lockouts",    x = 705, w = 65 },
-  { key = "todo",  label = "To do",       x = 770, w = CONTENT_W - 770 },
+  { key = "name",  label = "Character",   x = 0,   w = 170 },
+  { key = "level", label = "Level",       x = 170, w = 74 },
+  { key = "gold",  label = "Gold",        x = 244, w = 100 },
+  { key = "prof",  label = "Professions", x = 344, w = 130 },
+  { key = "cd",    label = "Cooldowns",   x = 474, w = 100 },
+  { key = "mail",  label = "Mail / AH",   x = 574, w = 76 },
+  { key = "gear",  label = "Gear",        x = 650, w = 66 },
+  { key = "lock",  label = "Lockouts",    x = 716, w = 70 },
+  { key = "todo",  label = "To do",       x = 786, w = CONTENT_W - 786 },
 }
 
 local LANGUAGES = {
-  { value = "auto", text = "Automatic (game language)" },
-  { value = "enUS", text = "English" },
-  { value = "frFR", text = "Français" },
+  { "auto", "Automatic (game language)" },
+  { "enUS", "English" },
+  { "frFR", "Français" },
 }
 
 local function countCooldowns(c)
@@ -120,6 +122,20 @@ local function tipMail(c)
     if c.mail.new then GameTooltip:AddLine(L["New mail waiting"], 0.5, 1, 0.5) end
     if c.mail.expires then GameTooltip:AddDoubleLine(L["First expiry"], ns.FormatTime(c.mail.expires - now), 1, 1, 1, 1, 0.6, 0.3) end
     if (c.mail.money or 0) > 0 then GameTooltip:AddDoubleLine(L["Gold"], ns.Money(c.mail.money), 1, 1, 1, 1, 1, 1) end
+    -- letters sent by the other characters since this one last opened its mailbox
+    local incoming = c.mail.incoming or {}
+    if #incoming > 0 then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddLine(L["Sent by your characters"], 0.85, 0.7, 0.42)
+      for i = #incoming, math.max(1, #incoming - 5), -1 do
+        local m = incoming[i]
+        local what = {}
+        if (m.items or 0) > 0 then what[#what + 1] = L["%d items"]:format(m.items) end
+        if (m.money or 0) > 0 then what[#what + 1] = ns.Money(m.money, true) end
+        GameTooltip:AddDoubleLine((m.from or "?") .. "  |cff999999" .. L["%s ago"]:format(ns.FormatTime(now - (m.at or now))) .. "|r",
+          #what > 0 and table.concat(what, ", ") or (m.subject or ""), 1, 1, 1, 1, 1, 1)
+      end
+    end
   end
   GameTooltip:AddLine(" ")
   GameTooltip:AddLine(L["Auction house"])
@@ -158,64 +174,36 @@ local function tipTasks(c)
   for _, t in ipairs(tasks) do GameTooltip:AddLine("- " .. t, 1, 1, 1, true) end
 end
 
--- Row menu (note / remove) -----------------------------------------------
-local menu = CreateFrame("Frame", "AltDashboardForeverRowMenu", UIParent, "UIDropDownMenuTemplate")
-local function openMenu(c)
-  UIDropDownMenu_Initialize(menu, function()
-    local info = UIDropDownMenu_CreateInfo()
-    info.text, info.isTitle, info.notCheckable = ns.ColoredName(c), true, true
-    UIDropDownMenu_AddButton(info)
-    info = UIDropDownMenu_CreateInfo()
-    info.text, info.notCheckable = L["Edit note"], true
-    info.func = function() StaticPopup_Show("ALTDASHBOARDFOREVER_NOTE", c.name, nil, c.key) end
-    UIDropDownMenu_AddButton(info)
-    if c.key ~= ns.me then
-      info = UIDropDownMenu_CreateInfo()
-      info.text, info.notCheckable = L["Remove from the dashboard"], true
-      info.func = function() StaticPopup_Show("ALTDASHBOARDFOREVER_REMOVE", c.name, nil, c.key) end
-      UIDropDownMenu_AddButton(info)
-    end
-    info = UIDropDownMenu_CreateInfo()
-    info.text, info.notCheckable = CANCEL, true
-    UIDropDownMenu_AddButton(info)
-  end, "MENU")
-  ToggleDropDownMenu(1, nil, menu, "cursor", 0, 0)
+-- Row menu and dialogs (note / remove / language) -------------------------
+local function editNote(c)
+  S.Dialog({
+    text = L["Note for %s (shown in its tasks):"]:format(ns.ColoredName(c)),
+    edit = true, value = c.note or "", maxLetters = 120,
+    onAccept = function(text)
+      local char = ns.db.chars[c.key]
+      if char then char.note = text; ns.RefreshAll() end
+    end,
+  })
 end
 
-local function editBoxOf(dialog) return dialog.editBox or dialog.EditBox or _G[dialog:GetName() .. "EditBox"] end
+local function confirmRemove(c)
+  S.Dialog({
+    text = L["Remove %s from the dashboard?"]:format(ns.ColoredName(c)),
+    accept = YES, cancel = NO,
+    onAccept = function() ns.RemoveChar(c.key) end,
+  })
+end
 
-StaticPopupDialogs.ALTDASHBOARDFOREVER_NOTE = {
-  text = L["Note for %s (shown in its tasks):"],
-  button1 = OKAY, button2 = CANCEL, hasEditBox = true, maxLetters = 120,
-  OnShow = function(self, key)
-    local e = editBoxOf(self)
-    e:SetText(ns.db.chars[key] and ns.db.chars[key].note or "")
-    e:SetFocus()
-  end,
-  OnAccept = function(self, key)
-    local c = ns.db.chars[key]
-    if c then c.note = strtrim(editBoxOf(self):GetText()); ns.RefreshAll() end
-  end,
-  EditBoxOnEnterPressed = function(self)
-    local d = self:GetParent()
-    StaticPopupDialogs.ALTDASHBOARDFOREVER_NOTE.OnAccept(d, d.data)
-    d:Hide()
-  end,
-  EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
-  timeout = 0, whileDead = true, hideOnEscape = true,
-}
-StaticPopupDialogs.ALTDASHBOARDFOREVER_REMOVE = {
-  text = L["Remove %s from the dashboard?"],
-  button1 = YES, button2 = NO,
-  OnAccept = function(_, key) ns.RemoveChar(key) end,
-  timeout = 0, whileDead = true, hideOnEscape = true,
-}
-StaticPopupDialogs.ALTDASHBOARDFOREVER_RELOAD = {
-  text = L["The interface will be reloaded to apply the language."],
-  button1 = OKAY, button2 = CANCEL,
-  OnAccept = function(_, lang) ns.db.lang = lang; ReloadUI() end,
-  timeout = 0, whileDead = true, hideOnEscape = true,
-}
+local function openMenu(c)
+  local entries = {
+    { text = ns.ColoredName(c), title = true },
+    { text = L["Edit note"], func = function() editNote(c) end },
+  }
+  if c.key ~= ns.me then
+    entries[#entries + 1] = { text = L["Remove from the dashboard"], color = C.bad, func = function() confirmRemove(c) end }
+  end
+  S.Menu(entries)
+end
 
 -- Overview row -----------------------------------------------------------
 -- a cell only shows a tooltip; clicks go to the row (menu on right-click)
@@ -223,13 +211,18 @@ local function cell(row, col, fill)
   local c = CreateFrame("Frame", nil, row)
   c:SetPoint("TOPLEFT", col.x, 0)
   c:SetSize(col.w, ROW_H)
+  c:EnableMouse(true)
   c:SetScript("OnEnter", function()
     GameTooltip:SetOwner(c, "ANCHOR_RIGHT")
     fill(row.char)
     GameTooltip:Show()
+    -- keep the row highlight while the mouse is over one of its cells
+    S.FadeTo(row.hl, 1, 0.12)
   end)
-  c:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  c:EnableMouse(true)
+  c:SetScript("OnLeave", function()
+    GameTooltip:Hide()
+    S.FadeTo(row.hl, 0, 0.3)
+  end)
   -- (SetPropagateMouseClicks is protected in combat: handle the click here instead)
   c:SetScript("OnMouseUp", function(_, button)
     if button == "RightButton" and row.char then openMenu(row.char) end
@@ -237,15 +230,18 @@ local function cell(row, col, fill)
   return c
 end
 
-local function iconSlot(parent, x, size)
-  local t = parent:CreateTexture(nil, "ARTWORK")
-  t:SetSize(size, size)
-  t:SetPoint("LEFT", x, 0)
-  t:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-  return t
-end
-
 local text = UI.Text
+
+-- ready cooldowns breathe softly (one driver for every row)
+local readyGlows = {}
+local pulse = CreateFrame("Frame")
+local pulseClock = 0
+pulse:SetScript("OnUpdate", function(_, e)
+  if not frame or not frame:IsShown() then return end
+  pulseClock = pulseClock + e
+  local a = 0.35 + 0.3 * (0.5 + 0.5 * math.sin(pulseClock * 2.4))
+  for g in pairs(readyGlows) do if g:IsShown() then g:SetAlpha(a) end end
+end)
 
 local function createRow(parent)
   local row = UI.RowBase(parent, CONTENT_W, ROW_H)
@@ -253,55 +249,70 @@ local function createRow(parent)
 
   -- character
   local ch = cell(row, COLUMNS[1], tipChar)
-  row.classIcon = iconSlot(ch, 6, 28)
+  row.classIcon = ch:CreateTexture(nil, "ARTWORK")
+  row.classIcon:SetSize(28, 28)
+  row.classIcon:SetPoint("LEFT", 8, 0)
   row.classIcon:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
-  row.name = text(ch, "GameFontNormal", "TOPLEFT", 42, -7, COLUMNS[1].w - 46)
-  row.realm = text(ch, "GameFontHighlightSmall", "BOTTOMLEFT", 42, 7, COLUMNS[1].w - 46)
-  row.realm:SetTextColor(0.6, 0.6, 0.6)
+  row.classRing = ch:CreateTexture(nil, "BACKGROUND", nil, 3)
+  row.classRing:SetTexture(S.MEDIA .. "Glow")
+  row.classRing:SetSize(42, 42)
+  row.classRing:SetPoint("CENTER", row.classIcon)
+  row.classRing:SetBlendMode("ADD")
+  row.name = S.Text(ch, 13, "text")
+  row.name:SetPoint("TOPLEFT", 44, -7)
+  row.name:SetWidth(COLUMNS[1].w - 50)
+  row.name:SetWordWrap(false)
+  row.realm = S.Text(ch, 10, "muted")
+  row.realm:SetPoint("BOTTOMLEFT", 44, 7)
+  row.realm:SetWidth(COLUMNS[1].w - 50)
+  row.realm:SetWordWrap(false)
   row.noteIcon = ch:CreateTexture(nil, "OVERLAY")
-  row.noteIcon:SetSize(14, 14)
-  row.noteIcon:SetPoint("TOPRIGHT", -2, -5)
-  row.noteIcon:SetTexture("Interface\\Buttons\\UI-GuildButton-PublicNote-Up")
+  row.noteIcon:SetSize(6, 6)
+  row.noteIcon:SetPoint("TOPRIGHT", -6, -8)
+  row.noteIcon:SetTexture(S.MEDIA .. "Dot")
+  row.noteIcon:SetVertexColor(S.Color(C.accent))
 
-  -- level + xp bar (rested part in blue)
+  -- level + xp bar (rested part behind, lighter)
   local lv = cell(row, COLUMNS[2], tipLevel)
-  row.level = text(lv, "GameFontHighlightLarge", "TOPLEFT", 4, -5)
-  row.talents = text(lv, "GameFontGreenSmall", "LEFT", 34, 6)
-  row.xpBg = lv:CreateTexture(nil, "BORDER")
-  row.xpBg:SetPoint("BOTTOMLEFT", 4, 8)
-  row.xpBg:SetSize(58, 5)
-  row.xpBg:SetColorTexture(0, 0, 0, 0.7)
-  row.rest = lv:CreateTexture(nil, "ARTWORK")
-  row.rest:SetPoint("BOTTOMLEFT", row.xpBg)
-  row.rest:SetHeight(5)
-  row.rest:SetColorTexture(0.25, 0.45, 1, 0.6)
-  row.xp = lv:CreateTexture(nil, "OVERLAY")
-  row.xp:SetPoint("BOTTOMLEFT", row.xpBg)
-  row.xp:SetHeight(5)
-  row.xp:SetColorTexture(0.6, 0.2, 0.9, 1)
+  row.level = S.Text(lv, 15, "text")
+  row.level:SetPoint("TOPLEFT", 4, -6)
+  row.talents = S.Text(lv, 10, "good")
+  row.talents:SetPoint("LEFT", row.level, "RIGHT", 5, 0)
+  row.xpBar = S.Bar(lv, 60, 4, "xp")
+  row.xpBar:SetPoint("BOTTOMLEFT", 4, 9)
 
   -- gold
   local gd = cell(row, COLUMNS[3], tipGold)
   row.gold = text(gd, "GameFontHighlight", "LEFT", 4, 0)
 
-  -- professions: 2 icons + ranks
+  -- professions: 2 framed icons + ranks
   local pr = cell(row, COLUMNS[4], tipProf)
   row.prof = {}
   for i = 1, 2 do
-    local t = iconSlot(pr, 4 + (i - 1) * 64, 24)
-    t.rank = text(pr, "GameFontHighlightSmall", "LEFT", 32 + (i - 1) * 64, 0)
+    local t = S.Icon(pr, 22)
+    t:SetPoint("LEFT", 4 + (i - 1) * 64, 0)
+    t.rank = S.Text(pr, 11, "text")
+    t.rank:SetPoint("LEFT", t, "RIGHT", 5, 0)
     row.prof[i] = t
   end
   row.noProf = text(pr, "GameFontDisableSmall", "LEFT", 4, 0)
   row.noProf:SetText("-")
 
-  -- cooldowns: up to 3 icons with their timer
+  -- cooldowns: up to 3 icons with their timer; a soft glow when ready
   local cd = cell(row, COLUMNS[5], tipCooldowns)
   row.cd = {}
   for i = 1, 3 do
-    local t = iconSlot(cd, 4 + (i - 1) * 32, 26)
-    t.timer = cd:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-    t.timer:SetPoint("BOTTOM", t, "BOTTOM", 0, -3)
+    local t = S.Icon(cd, 24)
+    t:SetPoint("LEFT", 6 + (i - 1) * 31, 2)
+    t.glow = cd:CreateTexture(nil, "BACKGROUND", nil, 3)
+    t.glow:SetTexture(S.MEDIA .. "Glow")
+    t.glow:SetBlendMode("ADD")
+    t.glow:SetSize(44, 44)
+    t.glow:SetPoint("CENTER", t)
+    t.glow:SetVertexColor(S.Color(C.good))
+    readyGlows[t.glow] = true
+    t.timer = S.Text(t, 9, "text", "OVERLAY", "OUTLINE")
+    t.timer:SetPoint("BOTTOM", t, "BOTTOM", 0, -6)
     row.cd[i] = t
   end
   row.noCd = text(cd, "GameFontDisableSmall", "LEFT", 4, 0)
@@ -309,23 +320,25 @@ local function createRow(parent)
 
   -- mail / auctions
   local ml = cell(row, COLUMNS[6], tipMail)
-  row.mail = text(ml, "GameFontHighlightSmall", "TOPLEFT", 4, -8)
-  row.ah = text(ml, "GameFontHighlightSmall", "BOTTOMLEFT", 4, 8)
+  row.mail = text(ml, "GameFontHighlightSmall", "TOPLEFT", 4, -7)
+  row.ah = text(ml, "GameFontHighlightSmall", "BOTTOMLEFT", 4, 7)
 
   -- gear
   local ge = cell(row, COLUMNS[7], tipGear)
-  row.ilvl = text(ge, "GameFontHighlightSmall", "TOPLEFT", 4, -8)
-  row.dura = text(ge, "GameFontHighlightSmall", "BOTTOMLEFT", 4, 8)
+  row.ilvl = text(ge, "GameFontHighlightSmall", "TOPLEFT", 4, -7)
+  row.dura = text(ge, "GameFontHighlightSmall", "BOTTOMLEFT", 4, 7)
 
   -- lockouts
   local lo = cell(row, COLUMNS[8], tipLockouts)
   row.lock = text(lo, "GameFontHighlightSmall", "LEFT", 4, 0)
 
-  -- to do
+  -- to do: colored dot + count
   local td = cell(row, COLUMNS[9], tipTasks)
-  row.todoIcon = iconSlot(td, 4, 18)
-  row.todoIcon:SetTexCoord(0, 1, 0, 1)
-  row.todo = text(td, "GameFontHighlight", "LEFT", 26, 0, COLUMNS[9].w - 30)
+  row.todoDot = td:CreateTexture(nil, "ARTWORK")
+  row.todoDot:SetTexture(S.MEDIA .. "Dot")
+  row.todoDot:SetSize(8, 8)
+  row.todoDot:SetPoint("LEFT", 6, 0)
+  row.todo = text(td, "GameFontHighlight", "LEFT", 22, 0, COLUMNS[9].w - 26)
 
   row:SetScript("OnClick", function(self) if self.char then openMenu(self.char) end end)
   return row
@@ -339,9 +352,11 @@ local function fillRow(row, c, index)
   local coords = CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[c.class or ""]
   row.classIcon:SetShown(coords ~= nil)
   if coords then row.classIcon:SetTexCoord(unpack(coords)) end
+  local col = (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS)[c.class or ""]
+  if col then row.classRing:SetVertexColor(col.r, col.g, col.b, 0.35) else row.classRing:SetVertexColor(1, 1, 1, 0) end
   row.name:SetText(ns.ColoredName(c))
   if c.key == ns.me then
-    row.realm:SetText("|cff00ff00" .. L["online"] .. "|r")
+    row.realm:SetText(S.Hex(C.good) .. L["online"] .. "|r")
   elseif ns.db.currentRealmOnly then
     row.realm:SetText(L["Last seen: %s ago"]:format(ns.FormatTime(now - (c.lastSeen or now))))
   else
@@ -352,14 +367,12 @@ local function fillRow(row, c, index)
   row.level:SetText(c.level or "?")
   row.talents:SetText((c.talentPoints or 0) > 0 and ("+" .. c.talentPoints) or "")
   local maxed = (c.level or 0) >= ns.MAX_LEVEL or not c.xpMax or c.xpMax == 0
-  row.xpBg:SetShown(not maxed)
-  row.xp:SetShown(not maxed and (c.xp or 0) > 0)
-  row.rest:SetShown(not maxed)
+  row.xpBar:SetShown(not maxed)
   if not maxed then
     local pct = math.min(1, (c.xp or 0) / c.xpMax)
     local rested = (ns.RestedPercent(c) or 0) / 100
-    row.xp:SetWidth(math.max(1, 58 * pct))
-    row.rest:SetWidth(math.max(1, 58 * math.min(1, pct + rested)))
+    row.xpBar:SetValue(pct)
+    row.xpBar:SetSecond(math.min(1, pct + rested))
   end
 
   row.gold:SetText(ns.Money(c.money, true))
@@ -370,9 +383,9 @@ local function fillRow(row, c, index)
     t:SetShown(p ~= nil)
     t.rank:SetShown(p ~= nil)
     if p then
-      t:SetTexture(icon(p.icon))
-      local col = p.rank >= 300 and "|cff00ff00" or p.rank >= p.max and "|cffff9933" or "|cffffffff"
-      t.rank:SetText(col .. p.rank .. "|r")
+      t.tex:SetTexture(icon(p.icon))
+      local hex = p.rank >= 300 and S.Hex(C.good) or p.rank >= p.max and S.Hex(C.warn) or S.Hex(C.text)
+      t.rank:SetText(hex .. p.rank .. "|r")
     end
   end
   row.noProf:SetShown(#profs == 0)
@@ -385,49 +398,52 @@ local function fillRow(row, c, index)
     local cd = cds[i]
     t:SetShown(cd ~= nil)
     t.timer:SetShown(cd ~= nil)
+    t.glow:SetShown(false)
     if cd then
-      t:SetTexture(icon(cd.icon))
+      t.tex:SetTexture(icon(cd.icon))
       local left = cd.expires - now
-      t:SetDesaturated(left > 0)
-      t.timer:SetText(left <= 0 and ("|cff00ff00" .. L["Ready"] .. "|r") or ("|cffff6060" .. ns.FormatShortTime(left) .. "|r"))
+      t.tex:SetDesaturated(left > 0)
+      t.glow:SetShown(left <= 0)
+      t.timer:SetText(left <= 0 and (S.Hex(C.good) .. L["Ready"] .. "|r") or (S.Hex(C.bad) .. ns.FormatShortTime(left) .. "|r"))
     end
   end
   row.noCd:SetShown(#cds == 0)
 
-  local mailIcon = "|TInterface\\Icons\\INV_Letter_15:14|t "
-  local ahIcon = "|TInterface\\Icons\\INV_Misc_Coin_01:14|t "
+  local mailIcon = "|TInterface\\Icons\\INV_Letter_15:13:13:0:0:64:64:5:59:5:59|t "
+  local ahIcon = "|TInterface\\Icons\\INV_Misc_Coin_01:13:13:0:0:64:64:5:59:5:59|t "
+  local grey = S.Hex(C.dim)
   if c.mail then
     local warn = c.mail.expires and c.mail.expires - now < ns.MAIL_WARN_DAYS * 86400
-    local col = warn and "|cffff6060" or ((c.mail.count or 0) > 0 or c.mail.new) and "|cffffd100" or "|cff808080"
-    row.mail:SetText(mailIcon .. col .. (c.mail.count or 0) .. (c.mail.new and "+" or "") .. "|r")
+    local hex = warn and S.Hex(C.bad) or ((c.mail.count or 0) > 0 or c.mail.new) and S.Hex(C.gold) or grey
+    row.mail:SetText(mailIcon .. hex .. (c.mail.count or 0) .. (c.mail.new and "+" or "") .. "|r")
   else
-    row.mail:SetText(mailIcon .. "|cff808080?|r")
+    row.mail:SetText(mailIcon .. grey .. "?|r")
   end
   if c.auctions then
-    local col = c.auctions.count == 0 and "|cff808080" or c.auctions.expires <= now and "|cff00ff00" or "|cffffffff"
-    row.ah:SetText(ahIcon .. col .. c.auctions.count .. "|r")
+    local hex = c.auctions.count == 0 and grey or c.auctions.expires <= now and S.Hex(C.good) or S.Hex(C.text)
+    row.ah:SetText(ahIcon .. hex .. c.auctions.count .. "|r")
   else
-    row.ah:SetText(ahIcon .. "|cff808080?|r")
+    row.ah:SetText(ahIcon .. grey .. "?|r")
   end
 
-  row.ilvl:SetText(c.ilvl and ("|cffaaaaaa" .. L["ilvl"] .. "|r " .. c.ilvl) or "|cff808080-|r")
+  row.ilvl:SetText(c.ilvl and (S.Hex(C.muted) .. L["ilvl"] .. "|r " .. c.ilvl) or (grey .. "-|r"))
   if c.durability then
-    local col = c.durability <= ns.LOW_DURABILITY and "|cffff4040" or c.durability < 60 and "|cffffd100" or "|cff00ff00"
-    row.dura:SetText(col .. c.durability .. "%|r")
+    local hex = c.durability <= ns.LOW_DURABILITY and S.Hex(C.bad) or c.durability < 60 and S.Hex(C.warn) or S.Hex(C.good)
+    row.dura:SetText(hex .. c.durability .. "%|r")
   else
     row.dura:SetText("")
   end
 
   local nLock = #ns.ActiveLockouts(c)
-  row.lock:SetText(nLock > 0 and ("|cffff9933" .. L["%d saved"]:format(nLock) .. "|r") or ("|cff808080" .. L["None"] .. "|r"))
+  row.lock:SetText(nLock > 0 and (S.Hex(C.warn) .. L["%d saved"]:format(nLock) .. "|r") or (grey .. L["None"] .. "|r"))
 
   local n = #ns.GetTasks(c)
   if n == 0 then
-    row.todoIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-    row.todo:SetText("|cff808080" .. L["Nothing to do"] .. "|r")
+    row.todoDot:SetVertexColor(S.Color(C.good))
+    row.todo:SetText(grey .. L["Nothing to do"] .. "|r")
   else
-    row.todoIcon:SetTexture("Interface\\GossipFrame\\AvailableQuestIcon")
-    row.todo:SetText("|cffffd100" .. (n == 1 and L["%d task"] or L["%d tasks"]):format(n) .. "|r")
+    row.todoDot:SetVertexColor(S.Color(C.gold))
+    row.todo:SetText(S.Hex(C.goldHi) .. (n == 1 and L["%d task"] or L["%d tasks"]):format(n) .. "|r")
   end
 end
 
@@ -442,7 +458,7 @@ function overview.build(parent)
     ns.db.todoOnly = self:GetChecked() or nil
     ns.RefreshDashboard()
   end)
-  p.todoOnly:SetPoint("TOPLEFT", 0, 0)
+  p.todoOnly:SetPoint("TOPLEFT", 2, -2)
 
   local box = UI.ListBox(p)
   box:SetPoint("TOPLEFT", 0, -26)
@@ -456,20 +472,19 @@ function overview.build(parent)
     h:SetPoint("TOPLEFT", col.x, 0)
     h:SetSize(col.w, HEAD_H)
     h.key = col.key
-    h.label = h:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    h.label:SetPoint("LEFT", col.key == "name" and 42 or 4, 0)
+    h.label = S.Text(h, 11, "muted")
+    h.label:SetPoint("LEFT", col.key == "name" and 44 or 4, 0)
     h.label:SetText(L[col.label])
-    h.arrow = h:CreateTexture(nil, "OVERLAY")
-    h.arrow:SetTexture("Interface\\Buttons\\UI-SortArrow")
-    h.arrow:SetSize(9, 8)
-    h.arrow:SetPoint("LEFT", h.label, "RIGHT", 3, 0)
-    local hl = h:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 1, 1, 0.08)
+    h.arrow = S.Chevron(h, 7, C.gold)
+    h.arrow:SetPoint("LEFT", h.label, "RIGHT", 5, 0)
+    h:SetScript("OnEnter", function(self) if ns.db.sort ~= self.key then self.label:SetTextColor(S.Color(C.text)) end end)
+    h:SetScript("OnLeave", function(self) if ns.db.sort ~= self.key then self.label:SetTextColor(S.Color(C.muted)) end end)
     h:SetScript("OnClick", function()
       if ns.db.sort == col.key then ns.db.sortDesc = not ns.db.sortDesc or nil
       else ns.db.sort, ns.db.sortDesc = col.key, nil end
       ns.RefreshDashboard()
+      h.arrow:Point(ns.db.sortDesc and "up" or "down", true)
+      UI.Cascade(p.rows, #p.rows)
     end)
     p.heads[#p.heads + 1] = h
   end
@@ -477,6 +492,10 @@ function overview.build(parent)
   local _, content = UI.Scroll(box, HEAD_H)
   p.content = content
   p.rows = {}
+
+  p.empty = S.Text(box, 13, "muted")
+  p.empty:SetPoint("CENTER", 0, -10)
+  p.empty:SetText(L["Nothing to do"])
   return p
 end
 
@@ -500,24 +519,95 @@ function overview.refresh(p)
     local row = p.rows[i] or createRow(p.content)
     p.rows[i] = row
     row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
-    fillRow(row, c, i)
     row:Show()
+    fillRow(row, c, i)
   end
   for i = #list + 1, #p.rows do p.rows[i]:Hide() end
   p.content:SetHeight(math.max(#list * ROW_H, 1))
+  p.empty:SetShown(#list == 0)
 
   for _, h in ipairs(p.heads) do
     local active = ns.db.sort == h.key
-    if active then h.label:SetTextColor(1, 1, 1) else h.label:SetTextColor(1, 0.82, 0) end
+    h.label:SetTextColor(S.Color(active and C.gold or C.muted))
     h.arrow:SetShown(active)
-    if ns.db.sortDesc then h.arrow:SetTexCoord(0, 0.5625, 1, 0) else h.arrow:SetTexCoord(0, 0.5625, 0, 1) end
+    if active and not S.IsTweening(h.arrow) then h.arrow:Point(ns.db.sortDesc and "up" or "down") end
+  end
+end
+
+function overview.animate(p)
+  UI.Cascade(p.rows, #p.rows)
+  for _, row in ipairs(p.rows) do
+    if row:IsShown() and row.xpBar:IsShown() then row.xpBar:Replay(0.15) end
   end
 end
 
 table.insert(ns.PAGES, 1, overview)
 
+-- Summary cards ----------------------------------------------------------
+local CARD_H = 52
+local function card(parent, iconName, label)
+  local f = S.Panel(parent, 8)
+  f:SetHeight(CARD_H)
+  f.icon = S.Icon(f, 30, icon(iconName))
+  f.icon:SetPoint("LEFT", 12, 0)
+  f.label = S.Text(f, 10, "muted")
+  f.label:SetPoint("TOPLEFT", f.icon, "TOPRIGHT", 11, -1)
+  f.label:SetText(label)
+  f.value = S.Text(f, 15, "text")
+  f.value:SetPoint("BOTTOMLEFT", f.icon, "BOTTOMRIGHT", 11, 0)
+  f.value:SetPoint("RIGHT", -10, 0)
+  f.value:SetWordWrap(false)
+  -- hover: border eases to blue
+  f:EnableMouse(true)
+  f:SetScript("OnEnter", function() S.TweenBorder(f, C.ring) end)
+  f:SetScript("OnLeave", function() S.TweenBorder(f, C.trim) end)
+  -- a changed value fades in
+  function f:Set(v)
+    if self.last == v then return end
+    local first = self.last == nil
+    self.last = v
+    self.value:SetText(v)
+    if not first and self:IsVisible() then
+      self.value:SetAlpha(0.2)
+      S.FadeTo(self.value, 1, 0.4)
+    end
+  end
+  return f
+end
+
 -- Refresh ----------------------------------------------------------------
-function ns.RefreshDashboard()
+local function showPage(tab, animate)
+  local pageFrame = tab.frame
+  pageFrame:Show()
+  if not animate then return end
+  pageFrame:SetAlpha(0)
+  S.Tween(pageFrame, { dur = 0.28, from = 10, to = 0, set = function(v, pr)
+    pageFrame:SetAlpha(pr)
+    pageFrame:ClearAllPoints()
+    pageFrame:SetPoint("TOPLEFT", 0, -v)
+    pageFrame:SetPoint("BOTTOMRIGHT", 0, -v)
+  end })
+  if tab.page.animate then tab.page.animate(pageFrame) end
+end
+
+-- the tab marker slides under the active tab
+local function moveMarker(tab, instant)
+  local m = frame.marker
+  local x0, w0 = m.x or 0, m.w or 0
+  local x1, w1 = tab.x, tab:GetWidth()
+  local function place(px, pw)
+    m.x, m.w = px, pw
+    m:ClearAllPoints()
+    m:SetPoint("BOTTOMLEFT", frame.tabBar, "BOTTOMLEFT", px, 0)
+    m:SetWidth(math.max(1, pw))
+  end
+  if instant or w0 == 0 then place(x1, w1) return end
+  S.Tween(m, { dur = 0.3, from = 0, to = 1, ease = "inOutCubic", set = function(v)
+    place(x0 + (x1 - x0) * v, w0 + (w1 - w0) * v)
+  end })
+end
+
+function ns.RefreshDashboard(animate)
   if not frame or not frame:IsShown() then return end
   local chars = ns.VisibleChars()
   local total, tasks = 0, 0
@@ -525,145 +615,113 @@ function ns.RefreshDashboard()
     total = total + (c.money or 0)
     tasks = tasks + #ns.GetTasks(c)
   end
-  local parts = { L["%d characters"]:format(#chars), L["Total: %s"]:format(ns.Money(total, true)) }
+  frame.cards[1]:Set(tostring(#chars))
+  frame.cards[2]:Set(ns.Money(total, true))
   local reset = ns.NextWeeklyReset()
-  if reset then parts[#parts + 1] = L["Weekly reset: %s"]:format(ns.FormatTime(reset - time())) end
-  parts[#parts + 1] = (tasks > 0 and "|cff7a0000" or "|cff0f4a00") .. L["%d tasks this week"]:format(tasks) .. "|r"
-  frame.stats:SetText(table.concat(parts, "   |cff4a3010-|r   "))
+  frame.cards[3]:Set(reset and ns.FormatTime(reset - time()) or "-")
+  frame.cards[4]:Set((tasks > 0 and S.Hex(C.goldHi) or S.Hex(C.good)) .. tasks .. "|r")
 
   frame.realmOnly:SetChecked(ns.db.currentRealmOnly)
   frame.minimap:SetChecked(not ns.db.hideMinimap)
-  frame.itemTip:SetChecked(not ns.db.noItemTooltip)
   frame.miniCheck:SetChecked(ns.db.miniShown)
 
+  local changed = frame.shownTab ~= ns.db.tab
   for _, tab in ipairs(frame.tabs) do
     local active = tab.page.key == ns.db.tab
-    tab:SetChecked(active)
-    if active then frame.pageTitle:SetText(L[tab.page.label]) end
-    if active and not tab.frame then tab.frame = tab.page.build(frame.pageArea) end
-    if tab.frame then tab.frame:SetShown(active) end
-    if active then tab.page.refresh(tab.frame) end
+    tab:SetActive(active)
+    if active then
+      frame.pageTitle:SetText(L[tab.page.label])
+      if not tab.frame then tab.frame = tab.page.build(frame.pageArea) end
+      tab.page.refresh(tab.frame)
+      if changed or animate then
+        showPage(tab, true)
+        moveMarker(tab, frame.shownTab == nil)
+        frame.shownTab = ns.db.tab
+      end
+    elseif tab.frame then
+      tab.frame:Hide()
+    end
   end
 end
 
--- Window (same look as the WoW Forever spellbook: metal frame, portrait, parchment) ----
+-- Window -----------------------------------------------------------------
 local TAB_ICONS = {
   overview = "INV_Misc_Book_11", reps = "Ability_Warrior_BattleShout", weekly = "INV_Misc_Note_01",
   search = "INV_Misc_Bag_08", gold = "INV_Misc_Coin_01",
 }
 
-local function atlasExists(name)
-  return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) ~= nil
-end
-
--- parchment: the spellbook atlas when the client has it, else the classic spellbook pages
-local function parchment(f)
-  local left = f:CreateTexture(nil, "BACKGROUND", nil, 2)
-  local right = f:CreateTexture(nil, "BACKGROUND", nil, 2)
-  left:SetPoint("TOPLEFT", 6, -62)
-  left:SetPoint("BOTTOMRIGHT", f, "BOTTOM", 0, 6)
-  right:SetPoint("TOPLEFT", f, "TOP", 0, -62)
-  right:SetPoint("BOTTOMRIGHT", -6, 6)
-  if atlasExists("spellbook-background-evergreen-left") then
-    left:SetAtlas("spellbook-background-evergreen-left")
-    right:SetAtlas("spellbook-background-evergreen-right")
-  else
-    left:SetTexture("Interface\\Spellbook\\Spellbook-Page-1")
-    left:SetTexCoord(0, 0.86, 0, 0.9)
-    right:SetTexture("Interface\\Spellbook\\Spellbook-Page-2")
-    right:SetTexCoord(0, 0.86, 0, 0.9)
+local function createTab(parent, page)
+  local tab = CreateFrame("Button", nil, parent)
+  tab.page = page
+  tab:SetHeight(32)
+  tab.icon = tab:CreateTexture(nil, "ARTWORK")
+  tab.icon:SetSize(16, 16)
+  tab.icon:SetPoint("LEFT", 10, 0)
+  tab.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  tab.icon:SetTexture(icon(TAB_ICONS[page.key] or "INV_Misc_QuestionMark"))
+  tab.label = S.Text(tab, 13, "muted")
+  tab.label:SetPoint("LEFT", tab.icon, "RIGHT", 7, 0)
+  tab.label:SetText(L[page.label])
+  tab:SetWidth(tab.label:GetStringWidth() + 44)
+  local hl = tab:CreateTexture(nil, "BACKGROUND")
+  hl:SetPoint("TOPLEFT", 0, -3)
+  hl:SetPoint("BOTTOMRIGHT", 0, 2)
+  S.Gradient(hl, { C.accent[1], C.accent[2], C.accent[3], 0 }, { C.accent[1], C.accent[2], C.accent[3], 0.12 })
+  S.HoverFade(tab, hl)
+  function tab:SetActive(on)
+    self.active = on
+    self.label:SetTextColor(S.Color(on and C.gold or C.muted))
+    self.icon:SetDesaturated(not on)
+    self.icon:SetAlpha(on and 1 or 0.7)
   end
-end
-
-local function setPortrait(f)
-  local tex = (f.PortraitContainer and f.PortraitContainer.portrait) or f.portrait
-  if not tex then
-    tex = f:CreateTexture(nil, "OVERLAY")
-    tex:SetSize(58, 58)
-    tex:SetPoint("TOPLEFT", -5, 7)
-  end
-  tex:SetTexture(ns.ADDON_ICON)
-  if tex.SetMask then tex:SetMask("Interface\\CharacterFrame\\TempPortraitAlphaMask") end
-end
-
-local function setTitle(f, text)
-  if f.SetTitle then f:SetTitle(text) return end
-  local t = f.TitleText or (f.TitleContainer and f.TitleContainer.TitleText)
-  if not t then
-    t = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    t:SetPoint("TOP", 0, -5)
-  end
-  t:SetText(text)
+  tab:HookScript("OnEnter", function(self)
+    if not self.active then self.label:SetTextColor(S.Color(C.text)); self.icon:SetAlpha(1) end
+  end)
+  tab:HookScript("OnLeave", function(self)
+    if not self.active then self.label:SetTextColor(S.Color(C.muted)); self.icon:SetAlpha(0.7) end
+  end)
+  tab:SetScript("OnClick", function()
+    if ns.db.tab == page.key then return end
+    ns.db.tab = page.key
+    ns.RefreshDashboard()
+  end)
+  return tab
 end
 
 local function create()
-  local ok, f = pcall(CreateFrame, "Frame", "AltDashboardForeverFrame", UIParent, "PortraitFrameTemplate")
-  if not ok then
-    f = CreateFrame("Frame", "AltDashboardForeverFrame", UIParent, "BackdropTemplate")
-    f:SetBackdrop({
-      bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-      edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Gold-Border",
-      tile = true, tileSize = 32, edgeSize = 24,
-      insets = { left = 6, right = 6, top = 6, bottom = 6 },
-    })
-    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", -4, -4)
-  end
-  f:SetSize(WIDTH, HEIGHT)
+  local f = S.Window("AltDashboardForeverFrame", UIParent, WIDTH, HEIGHT, 14)
   f:SetPoint("CENTER")
   f:SetFrameStrata("DIALOG")
   f:SetToplevel(true)
-  f:SetMovable(true)
-  f:EnableMouse(true)
-  f:RegisterForDrag("LeftButton")
-  f:SetScript("OnDragStart", f.StartMoving)
-  f:SetScript("OnDragStop", f.StopMovingOrSizing)
-  f:SetClampedToScreen(true)
   tinsert(UISpecialFrames, f:GetName()) -- close with Escape
 
-  local getMeta = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
-  setTitle(f, "Alt Dashboard (Forever)  |cff9d9d9dv" .. (getMeta(ADDON, "Version") or "?") .. "|r")
-  setPortrait(f)
-  parchment(f)
+  -- title bar (drag handle)
+  local bar = CreateFrame("Frame", nil, f)
+  bar:SetPoint("TOPLEFT", 1, -1)
+  bar:SetPoint("TOPRIGHT", -1, -1)
+  bar:SetHeight(48)
+  S.Draggable(f, bar)
 
-  -- tab icons under the title, like the spellbook
-  f.tabs = {}
-  for i, page in ipairs(ns.PAGES) do
-    local tab = CreateFrame("CheckButton", nil, f)
-    tab.page = page
-    tab:SetSize(34, 34)
-    tab:SetPoint("TOPLEFT", 70 + (i - 1) * 42, -26)
-    local icon = tab:CreateTexture(nil, "ARTWORK")
-    icon:SetAllPoints()
-    icon:SetTexture(UI.Icon(TAB_ICONS[page.key] or "INV_Misc_QuestionMark"))
-    local border = tab:CreateTexture(nil, "OVERLAY")
-    border:SetPoint("TOPLEFT", -3, 3)
-    border:SetPoint("BOTTOMRIGHT", 3, -3)
-    border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
-    border:SetTexCoord(0.2, 0.8, 0.2, 0.8)
-    tab:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    tab:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
-    tab:GetCheckedTexture():SetBlendMode("ADD")
-    tab:SetScript("OnClick", function()
-      ns.db.tab = page.key
-      ns.RefreshDashboard()
-    end)
-    tab:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-      GameTooltip:AddLine(L[page.label])
-      GameTooltip:Show()
-    end)
-    tab:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    f.tabs[#f.tabs + 1] = tab
-  end
+  local logo = S.Icon(bar, 32, ns.ADDON_ICON)
+  logo.tex:SetTexCoord(0, 1, 0, 1)
+  logo:SetPoint("LEFT", 14, -1)
+  logo:SetBorderColor(S.Color(C.gold, 0.7))
+  local title = S.Text(bar, 17, "gold")
+  title:SetPoint("TOPLEFT", logo, "TOPRIGHT", 11, 0)
+  title:SetText("Alt Dashboard")
+  local getMeta = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
+  local sub = S.Text(bar, 10, "muted")
+  sub:SetPoint("BOTTOMLEFT", logo, "BOTTOMRIGHT", 11, 1)
+  sub:SetText(S.Hex(C.accent) .. "FOREVER|r   v" .. (getMeta(ADDON, "Version") or "?"))
+
+  f.close = S.CloseButton(f, function() S.Close(f) end)
+  f.close:SetPoint("TOPRIGHT", -12, -13)
+  f.close:SetFrameLevel(bar:GetFrameLevel() + 5)
 
   -- search box (top right): opens the Search tab
-  local ok2, search = pcall(CreateFrame, "EditBox", nil, f, "SearchBoxTemplate")
-  if not ok2 then search = UI.EditBox(f, 220) end
-  search:SetSize(220, 20)
-  search:SetPoint("TOPRIGHT", -40, -34)
-  search:SetAutoFocus(false)
-  if search.Instructions then search.Instructions:SetText(L["Search items, recipes"]) end
+  local search = S.EditBox(f, 240, 24, L["Search items, recipes"])
+  search:SetPoint("RIGHT", f.close, "LEFT", -10, 0)
+  search:SetFrameLevel(bar:GetFrameLevel() + 5)
   search:HookScript("OnTextChanged", function(self, user)
     if not user then return end
     ns.db.tab = "search"
@@ -671,64 +729,112 @@ local function create()
     if ns.SetSearchText then ns.SetSearchText(self:GetText()) end
   end)
 
-  -- page title, as the "General" heading of the spellbook
-  f.pageTitle = f:CreateFontString(nil, "OVERLAY", "QuestFont_Huge")
-  f.pageTitle:SetPoint("TOPLEFT", 36, -76)
-  f.pageTitle:SetTextColor(0.1, 0.05, 0.01)
-  f.pageTitle:SetShadowOffset(0, 0)
-  local rule = f:CreateTexture(nil, "ARTWORK")
-  rule:SetPoint("TOPLEFT", 30, -104)
-  rule:SetPoint("TOPRIGHT", -30, -104)
-  rule:SetHeight(1)
-  rule:SetColorTexture(0.2, 0.12, 0.04, 0.8)
+  local rule = S.Rule(f, C.ring, 0.5)
+  rule:SetPoint("TOPLEFT", 16, -49)
+  rule:SetPoint("TOPRIGHT", -16, -49)
 
-  f.stats = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  f.stats:SetPoint("BOTTOMRIGHT", rule, "TOPRIGHT", -4, 6)
-  f.stats:SetTextColor(0.1, 0.05, 0.01)
-  f.stats:SetShadowOffset(0, 0)
+  -- tabs + sliding marker
+  f.tabBar = CreateFrame("Frame", nil, f)
+  f.tabBar:SetPoint("TOPLEFT", 24, -54)
+  f.tabBar:SetPoint("TOPRIGHT", -24, -54)
+  f.tabBar:SetHeight(34)
+  local base = f.tabBar:CreateTexture(nil, "BACKGROUND")
+  base:SetPoint("BOTTOMLEFT"); base:SetPoint("BOTTOMRIGHT"); base:SetHeight(1)
+  base:SetColorTexture(S.Color(C.trim))
+  f.marker = CreateFrame("Frame", nil, f.tabBar)
+  f.marker:SetHeight(2)
+  local mline = f.marker:CreateTexture(nil, "OVERLAY")
+  mline:SetAllPoints()
+  S.Gradient(mline, { C.accent[1], C.accent[2], C.accent[3], 0.3 }, C.accent, true)
+  local mglow = f.marker:CreateTexture(nil, "ARTWORK")
+  mglow:SetTexture(S.MEDIA .. "Glow")
+  mglow:SetBlendMode("ADD")
+  mglow:SetPoint("BOTTOMLEFT", 0, -6)
+  mglow:SetPoint("TOPRIGHT", 0, 8)
+  mglow:SetVertexColor(C.accent[1], C.accent[2], C.accent[3], 0.35)
 
+  f.tabs = {}
+  local x = 0
+  for _, page in ipairs(ns.PAGES) do
+    local tab = createTab(f.tabBar, page)
+    tab:SetPoint("BOTTOMLEFT", x, 0)
+    tab.x = x
+    x = x + tab:GetWidth() + 4
+    f.tabs[#f.tabs + 1] = tab
+  end
+
+  -- summary cards
+  local cw = (WIDTH - 60 - 3 * 12) / 4
+  f.cards = {
+    card(f, "INV_Misc_Head_Human_01", L["Characters"]),
+    card(f, "INV_Misc_Coin_02", L["Total gold"]),
+    card(f, "INV_Misc_PocketWatch_01", L["Weekly reset"]),
+    card(f, "INV_Scroll_03", L["Tasks this week"]),
+  }
+  for i, cd in ipairs(f.cards) do
+    cd:SetPoint("TOPLEFT", 30 + (i - 1) * (cw + 12), -100)
+    cd:SetWidth(cw)
+  end
+
+  -- page title + realm filter
+  f.pageTitle = S.Text(f, 16, "gold")
+  f.pageTitle:SetPoint("TOPLEFT", 32, -170)
   f.realmOnly = UI.Check(f, L["Current realm only"], function(self)
     ns.db.currentRealmOnly = self:GetChecked() or nil
     ns.RefreshAll()
   end)
-  f.realmOnly:SetPoint("TOPRIGHT", -34 - f.realmOnly.text:GetStringWidth(), -108)
+  f.realmOnly:SetPoint("TOPRIGHT", -40 - f.realmOnly.text:GetStringWidth(), -170)
 
   f.pageArea = CreateFrame("Frame", nil, f)
-  f.pageArea:SetPoint("TOPLEFT", 30, -134)
-  f.pageArea:SetPoint("BOTTOMRIGHT", -30, 44)
+  f.pageArea:SetPoint("TOPLEFT", 30, -196)
+  f.pageArea:SetPoint("BOTTOMRIGHT", -30, 52)
 
   -- footer: options, language, refresh
+  local foot = S.Rule(f, C.ring, 0.35)
+  foot:SetPoint("BOTTOMLEFT", 16, 44)
+  foot:SetPoint("BOTTOMRIGHT", -16, 44)
+
   f.minimap = UI.Check(f, L["Minimap button"], function(self)
     ns.db.hideMinimap = not self:GetChecked() or nil
     ns.UpdateMinimapButton()
   end)
-  f.minimap:SetPoint("BOTTOMLEFT", 30, 14)
-  f.itemTip = UI.Check(f, L["Alts in item tooltips"], function(self) ns.db.noItemTooltip = not self:GetChecked() or nil end)
-  f.itemTip:SetPoint("BOTTOMLEFT", 200, 14)
+  f.minimap:SetPoint("BOTTOMLEFT", 32, 16)
   f.miniCheck = UI.Check(f, L["Compact window"], function(self) ns.SetMiniShown(self:GetChecked()) end)
-  f.miniCheck:SetPoint("BOTTOMLEFT", 410, 14)
+  f.miniCheck:SetPoint("LEFT", f.minimap.text, "RIGHT", 24, 0)
 
-  local lang = CreateFrame("Frame", "AltDashboardForeverLangDropDown", f, "UIDropDownMenuTemplate")
-  lang:SetPoint("BOTTOMRIGHT", -150, 10)
-  UIDropDownMenu_SetWidth(lang, 150)
-  UIDropDownMenu_Initialize(lang, function()
-    for _, o in ipairs(LANGUAGES) do
-      local info = UIDropDownMenu_CreateInfo()
-      info.text, info.value = L[o.text], o.value
-      info.checked = (ns.db.lang or "auto") == o.value
-      info.func = function()
-        CloseDropDownMenus()
-        if (ns.db.lang or "auto") ~= o.value then StaticPopup_Show("ALTDASHBOARDFOREVER_RELOAD", nil, nil, o.value) end
-      end
-      UIDropDownMenu_AddButton(info)
-    end
+  -- item tooltip options, in a small menu (alts that own the item, quest of the item)
+  local tips = S.Button(f, L["Tooltips"], 120, 22)
+  tips:SetPoint("LEFT", f.miniCheck.text, "RIGHT", 24, 0)
+  tips.text:ClearAllPoints()
+  tips.text:SetPoint("LEFT", 9, 0)
+  local chev = S.Chevron(tips, 8, C.gold)
+  chev:SetPoint("RIGHT", -9, 0)
+  chev:Point("up")
+  tips:SetScript("OnClick", function(self)
+    local function toggle(key) return function() ns.db[key] = not ns.db[key] or nil end end
+    S.Menu({
+      { text = L["Tooltips"], title = true },
+      { text = L["Alts in item tooltips"], checked = not ns.db.noItemTooltip, func = toggle("noItemTooltip") },
+      { text = L["Quest of the item in tooltips"], checked = not ns.db.noQuestTooltip, func = toggle("noQuestTooltip") },
+    }, self, 200)
   end)
-  for _, o in ipairs(LANGUAGES) do
-    if o.value == (ns.db.lang or "auto") then UIDropDownMenu_SetText(lang, L[o.text]) end
-  end
 
-  local refresh = UI.Button(f, L["Refresh"], 110, function() ns.ScanAll() end)
+  local refresh = UI.Button(f, L["Refresh"], 110, function() ns.ScanAll() end, true)
   refresh:SetPoint("BOTTOMRIGHT", -30, 12)
+
+  local langOptions = {}
+  for _, o in ipairs(LANGUAGES) do langOptions[#langOptions + 1] = { o[1], L[o[2]] } end
+  local lang = S.Dropdown(f, langOptions, 200, function() return ns.db.lang or "auto" end, function(value)
+    if (ns.db.lang or "auto") == value then return end
+    S.Dialog({
+      text = L["The interface will be reloaded to apply the language."],
+      onAccept = function() ns.db.lang = value; ReloadUI() end,
+    })
+  end)
+  lang:SetPoint("RIGHT", refresh, "LEFT", -10, 0)
+  local langLabel = S.Text(f, 11, "muted")
+  langLabel:SetPoint("RIGHT", lang, "LEFT", -8, 0)
+  langLabel:SetText(L["Language"])
 
   -- timers tick while the window is open
   local elapsed = 0
@@ -736,7 +842,14 @@ local function create()
     elapsed = elapsed + e
     if elapsed > 30 then elapsed = 0; ns.RefreshDashboard() end
   end)
-  f:SetScript("OnShow", ns.RefreshDashboard)
+  -- opening: cards rise one after the other, the page fades in
+  f:HookScript("OnShow", function()
+    for i, cd in ipairs(f.cards) do
+      cd:SetAlpha(0)
+      S.Tween(cd, { dur = 0.35, delay = 0.05 + i * 0.05, from = 0, to = 1, set = function(v) cd:SetAlpha(v) end })
+    end
+    ns.RefreshDashboard(true)
+  end)
   f:Hide()
   return f
 end
@@ -745,9 +858,10 @@ function ns.ToggleDashboard(tab)
   frame = frame or create()
   if tab then
     ns.db.tab = tab
-    frame:Show()
-    ns.RefreshDashboard()
+    if frame:IsShown() then ns.RefreshDashboard() else frame:Show() end
+  elseif frame:IsShown() then
+    S.Close(frame)
   else
-    frame:SetShown(not frame:IsShown())
+    frame:Show()
   end
 end

@@ -125,11 +125,12 @@ function page.build(parent)
     name:ClearFocus()
   end
   name:SetScript("OnEnterPressed", add)
-  local btn = UI.Button(p, L["Add"], 90, add)
+  local btn = UI.Button(p, L["Add"], 90, add, true)
   btn:SetPoint("LEFT", daily.text, "RIGHT", 14, 0)
   return p
 end
 
 function page.refresh(p) p.grid:Refresh() end
+function page.animate(p) p.grid:Cascade() end
 
 table.insert(ns.PAGES, page)

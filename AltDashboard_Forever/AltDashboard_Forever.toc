@@ -2,7 +2,7 @@
 ## Title: Alt Dashboard (Forever)
 ## Notes: One view of all your alts: level, professions, cooldowns, gold, reputations and lockouts
 ## Author: Daeler
-## Version: 1.0.4
+## Version: 1.1.0
 ## IconTexture: Interface\AddOns\AltDashboard_Forever\media\icon
 ## X-Category: Inventory
 ## Category: Daeler Addons
@@ -16,8 +16,10 @@ Locales\frFR.lua
 
 # Core
 Core\Core.lua
+Core\Skin.lua
 Core\Scan.lua
 Core\Inventory.lua
+Core\QuestItems.lua
 Core\Commands.lua
 
 # UI
